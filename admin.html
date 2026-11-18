@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Emma Scratch Entries</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--g:#054f30;--g2:#00a84f;--ink:#0f2a1d;--bg:#f3f8f5;--line:#d6e7dd;--muted:#5d7468;color-scheme:light}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font-family:Poppins,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--g);color:#fff;padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+header .in{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header img{height:36px;width:auto}
+header h1{margin:0;font-size:1.2rem;font-weight:800}
+.wrap{max-width:1000px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:11px 18px;background:var(--g);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible{outline:3px solid var(--g2);outline-offset:2px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat b{display:block;font-size:1.6rem;font-variant-numeric:tabular-nums;color:var(--g)}
+.stat span{font-size:.78rem;color:var(--muted)}
+.tbl{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:#fafdfb}
+td.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.err{color:#c62828;font-weight:600}
+</style>
+</head>
+<body>
+<header><div class="in"><img src="LOGO%20HD.png" alt="Equics"><h1>Emma Scratch &amp; Win entries</h1></div></header>
+<div class="wrap">
+  <div id="out" class="card">
+    <p style="margin:0 0 12px">Sign in with the owner Google account to see and download the entries.</p>
+    <button id="login">Sign in with Google</button>
+  </div>
+  <div id="in" hidden style="display:flex;flex-direction:column;gap:16px">
+    <div class="row">
+      <span id="who" class="muted"></span>
+      <button id="csv">Download CSV (Excel)</button>
+      <button id="refresh" class="ghost">Refresh</button>
+      <button id="logout" class="ghost">Sign out</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="tbl"><table>
+      <thead><tr><th>#</th><th>Date &amp; time</th><th>Name</th><th>Mobile</th><th>Prize</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </div>
+  <p id="err" class="err" role="alert"></p>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+const app = initializeApp({apiKey:"AIzaSyB2skTBAMM56K31bzHHbeNxnbxyEwTw2oo",authDomain:"equics-centro.firebaseapp.com",projectId:"equics-centro",storageBucket:"equics-centro.firebasestorage.app",messagingSenderId:"250174556072",appId:"1:250174556072:web:e3bf346d0a334f5506ff9d"});
+const auth = getAuth(app), db = getFirestore(app);
+const $ = id => document.getElementById(id);
+let data = [];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const when = d => d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+const fmt = d => { const t = when(d); return t ? t.toLocaleString("en-GB", {dateStyle:"medium", timeStyle:"short"}) : ""; };
+const mob = p => { p = String(p || ""); return p.startsWith("960") ? "+960 " + p.slice(3) : p; };
+
+$("login").onclick = () => { $("err").textContent = ""; signInWithPopup(auth, new GoogleAuthProvider()).catch(e => $("err").textContent = "Sign-in failed: " + e.message); };
+$("logout").onclick = () => signOut(auth);
+$("refresh").onclick = load;
+$("csv").onclick = () => {
+  const rows = [["No","Date & time","Name","Mobile","Prize"]].concat(data.map((d,i) => [i+1, fmt(d), d.name, mob(d.phone), d.prize]));
+  const csv = rows.map(r => r.map(v => '"' + String(v ?? "").replace(/"/g,'""') + '"').join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], {type:"text/csv;charset=utf-8"}));
+  a.download = "emma-scratch-entries-" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+onAuthStateChanged(auth, u => {
+  $("out").hidden = !!u; $("in").hidden = !u;
+  if (u) { $("who").textContent = "Signed in as " + u.email; load(); }
+});
+
+async function load(){
+  $("err").textContent = "";
+  try {
+    const snap = await getDocs(collection(db, "scratch_entries"));
+    data = snap.docs.map(d => d.data()).sort((a,b) => (when(a)||0) - (when(b)||0));
+    $("rows").innerHTML = data.map((d,i) => `<tr><td class="num">${i+1}</td><td class="num">${esc(fmt(d))}</td><td>${esc(d.name)}</td><td class="num">${esc(mob(d.phone))}</td><td>${esc(d.prize)}</td></tr>`).join("")
+      || '<tr><td colspan="5" class="muted">No entries yet.</td></tr>';
+    const order = ["5% OFF","10% OFF","Emma Coconut Milk Powder","Better luck next time"];
+    const count = {}; data.forEach(d => count[d.prize] = (count[d.prize]||0) + 1);
+    $("stats").innerHTML = `<div class="stat"><b>${data.length}</b><span>Total players</span></div>` +
+      order.map(k => `<div class="stat"><b>${count[k]||0}</b><span>${esc(k)}</span></div>`).join("");
+  } catch (e) {
+    $("in").hidden = true; $("out").hidden = false;
+    $("err").textContent = e.code === "permission-denied"
+      ? "This Google account is not allowed to view entries. Sign out and use janithaoffice8@gmail.com."
+      : "Could not load entries: " + e.message;
+    if (e.code === "permission-denied") signOut(auth);
+  }
+}
+</script>
+</body>
+</html>
